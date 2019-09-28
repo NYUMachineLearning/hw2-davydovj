@@ -1,0 +1,177 @@
+---
+title: "Regression"
+author: "Anna Yeaton"
+date: "Fall 2019"
+output:
+  html_document:
+    df_print: paged
+fontsize: 11pt
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = T)
+```
+
+
+### The broad steps of Machine learning in R. 
+
+1. Split the data into training and test. Set test aside. 
+
+2. Fit a good model to the training data. 
+
+3. See how your model did on the training data.
+
+4. Test how your model performs on the test data. 
+
+# Regression
+
+```{r, include=FALSE}
+library(caret)
+library(MASS)
+library(ggplot2)
+library(dplyr)
+library(ggfortify)
+library(elasticnet)
+
+
+#Read in Mauna Loa CO2 concentrations
+airquality <- airquality
+
+```
+
+
+1. Split data into training and test set (75% in train set, 25% in test set)
+
+```{r}
+set.seed(1127)
+
+n <- 0.75*nrow(airquality)
+trainsmp <- sample(nrow(airquality), size = n, replace = FALSE)
+
+train_regression <- airquality[trainsmp,]
+test_regression <- airquality[-trainsmp,]
+```
+
+We will predict the response of the Temperature based on Wind. 
+
+This is the data we will fit a linear model to. 
+```{r}
+TempWindplot <- ggplot(data = train_regression) +
+   geom_point(aes(x=Wind, y=Temp)) +
+   theme_bw()
+TempWindplot
+```
+
+2. Create and fit a linear model to predict Temperature from Wind using the training set
+
+```{r}
+set.seed(1127)
+
+linear_regression <- train(Temp ~ Wind, train_regression, method = "lm")
+#Training a linear model to predict temperature variable based on wind variable 
+```
+
+
+3. Vizualize how your model performed on the train data by plotting the regression line on top of the train data points. 
+```{r}
+fittedplot <- ggplot(data = train_regression) +
+  geom_point(aes(x=Wind, y=Temp)) +
+  theme_bw() + 
+  geom_smooth(aes(x=Wind, y=Temp), method = "lm", se = F)
+fittedplot
+#Our plot with the training sample observations with a linear model regression line plotted on top.
+```
+
+
+4. Explore how the model performs on the test data. For Linear Regression:
+
+* The residuals should be close to zero.
+* There should be equal variance around the regression line (homoscedasticity).
+* Residuals should be normally distributed.
+* Independent variables and residuals should not be correlated.
+
+4 a) See how the model performs on the test data
+```{r}
+set.seed(1127)
+
+linear_predict <- predict(linear_regression, newdata = test_regression, method = "lm")
+linear_predict
+#These are the temperature values our linear model predicted when using the test set data.
+```
+
+4 b) Look at the residuals. Are they close to zero?
+```{r}
+summary(linear_regression, newdata = test_regression)
+#Looking at the median residual which is about 2, that is relatively close to 0 when seeing that the maximum magnitude residual is around 23.3. 
+```
+
+
+4 c) Plot predicted temperature vs observed temperature. A strong model should show a strong correlation
+```{r}
+plot(linear_predict, test_regression$Temp, xlab = "Predicted temp", ylab = "Observed temp") + abline(a=0, b=1)
+#Plotting predicted temperature vs observed temperature with a y=x line plotted on the points for comparison.
+```
+
+```{r}
+cor.test(linear_predict, test_regression$Temp)
+#We have a significant p-value of 3.69e-05, confirming that there is in fact a significant correlation between the temperatures.
+```
+
+4 d) Visualize the predicted values in relation to the real data points. Look for homoscedasticity
+```{r}
+# Extract coefficients from the model
+coeff <- linear_regression$finalModel$coefficients
+
+# plot the regression line on the predicted values
+plot(test_regression$Wind, linear_predict, xlab = "Wind", ylab = "Predicted Temp") + abline(coeff, col = "red")
+
+# plot the original test values
+par(mar = c(4, 4, 4, 4))
+plot(test_regression$Wind, linear_predict, xlab = "Wind", ylab = "Predicted Temp", pch = 16, main = "Observed and Predicted Temperatures vs. Wind") + abline(coeff, col = "red")
+par(new = T)
+plot(test_regression$Wind, test_regression$Temp, xlab = "", ylab = "", yaxt = "n", pch = 21)
+axis(side = 4)
+mtext("Observed Temp", side = 4, line = 2.5)
+legend("topright",legend=c("Predicted Temp","Observed Temp"), text.col=c("black"),pch=c(16,21),col=c("black"))
+
+```
+
+4 e) Residuals should be normally distributed. Plot the density of the residuals
+```{r}
+residuals_lin <- residuals(linear_regression)
+
+ggplot() +
+  geom_density(aes(residuals_lin)) + xlab("Residuals of Linear Regression")
+#Plotting a density curve, it is generally normally distributed (slight bias to positive residuals).
+```
+
+
+4 f) Independent variables and residuals should not be correlated
+```{r}
+cor.test(train_regression$Wind, resid(linear_regression))
+#Here we demonstrate a p-value of 1, signifying an insignificant correlation aka there is no correlation between our independent variable 'Wind' and our model residuals.
+```
+
+### Linear Regression with Regularization
+
+5. Create a linear model using L1 or L2 regularization to predict Temperature from Wind and Month variables. Plot your predicted values and the real Y values on the same plot. 
+```{r}
+set.seed(1127)
+ctrl =  trainControl(method = "boot", 15)
+ridge_model <- train(Temp ~ Wind + Month, data = train_regression, method = "ridge", trControl= ctrl)
+
+ridge_predict <- predict(ridge_model, newdata = test_regression)
+#Setting up our new model and predictions, this time using Ridge Regularization to predict Temp from Wind and Month variables.
+```
+
+
+```{r}
+par(mar = c(4, 4, 4, 4))
+plot(test_regression$Wind, ridge_predict, xlab = "Wind", ylab = "Predicted Temp", pch = 19, main = "Observed and Predicted Temperatures vs. Wind", col = test_regression$Month) + abline(coeff, col = "red")
+par(new = T)
+plot(test_regression$Wind, test_regression$Temp, xlab = "", ylab = "", yaxt = "n", pch = 21, col = test_regression$Month)
+axis(side = 4)
+mtext("Observed Temp", side = 4, line = 2.5)
+legend("topright",legend=c("Predicted Temp","Observed Temp"), text.col=c("black"),pch=c(19, 21),col=c("black"))
+##Here we see our linear model fitted on both our predicted and observed temperatures. We see 5 different colors, confirming a general different between the 5 months our data is from. Our model has less bias now and fits our observed data better.
+```
